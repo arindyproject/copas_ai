@@ -46,13 +46,13 @@ class MultiLabelTimeSeriesDataset(Dataset):
                 print("y:", y.shape)  # (batch, num_labels)
                 break
         """
-    def __init__(self, df, seq_length=10, slide=1, feature_cols=None, target_cols=None):
+    def __init__(self, df, seq_length=10, slide=1, feature_cols=None, target_cols=None, device='cpu'):
         if feature_cols is None or target_cols is None:
             raise ValueError("feature_cols dan target_cols harus ditentukan sebagai list nama kolom.")
 
         self.seq_length = seq_length
         self.slide = slide
-        self.device = torch.device(device if device else "cpu")
+        self.device =device
 
         # Ambil data fitur dan target
         X = df[feature_cols].values.astype(float)
@@ -127,10 +127,10 @@ class MultiLabel1DDataset(Dataset):
                 print(y)
                 break
         """
-    def __init__(self, df, feature_cols, target_cols, normalize=True):
+    def __init__(self, df, feature_cols, target_cols, normalize=True, device='cpu'):
         self.feature_cols = feature_cols
         self.target_cols = target_cols
-        self.device = torch.device(device if device else "cpu")
+        self.device = device
 
         X = df[feature_cols].values.astype(float)
         y = df[target_cols].values.astype(float)
@@ -201,11 +201,11 @@ class MultiLabel2DDataset(Dataset):
                 print()
                 break
         """    
-    def __init__(self, df, feature1_cols, feature2_cols, target_cols, normalize=True):
+    def __init__(self, df, feature1_cols, feature2_cols, target_cols, normalize=True, device='cpu'):
         self.feature1_cols = feature1_cols
         self.feature2_cols = feature2_cols
         self.target_cols = target_cols
-        self.device = torch.device(device if device else "cpu")
+        self.device = device 
 
         X1 = df[feature1_cols].values.astype(float)
         X2 = df[feature2_cols].values.astype(float)
@@ -292,13 +292,13 @@ class MultiLabel3DDataset(Dataset):
                 print()
                 break
     """
-    def __init__(self, df, feature1_cols, feature2_cols, feature3_cols, target_cols, normalize=True, device=None):
+    def __init__(self, df, feature1_cols, feature2_cols, feature3_cols, target_cols, normalize=True, device='cpu'):
         self.feature1_cols = feature1_cols
         self.feature2_cols = feature2_cols
         self.feature3_cols = feature3_cols
         self.target_cols = target_cols
 
-        self.device = torch.device(device if device else "cpu")
+        self.device = device
 
         X1 = df[feature1_cols].values.astype(float)
         X2 = df[feature2_cols].values.astype(float)
@@ -370,14 +370,14 @@ class MultiClassTimeSeriesDataset(Dataset):
         print("X shape:", x.shape)  # (seq_length, num_features)
         print("Y:", y)
     """
-    def __init__(self, df, feature_stems, target_stem, seq_length=10, slide=1, device=None):
+    def __init__(self, df, feature_stems, target_stem, seq_length=10, slide=1, device='cpu'):
         super().__init__()
         self.df = df.reset_index(drop=True)
         self.feature_stems = feature_stems
         self.target_stem = target_stem
         self.seq_length = seq_length
         self.slide = slide
-        self.device = device or torch.device("cpu")
+        self.device = device 
 
         # Pastikan semua kolom fitur ada
         for stem in self.feature_stems:
@@ -450,10 +450,10 @@ class MultiClass1DDataset(Dataset):
             print(y)
             break
     """
-    def __init__(self, df, feature_cols, target_col, normalize=True, device=None):
+    def __init__(self, df, feature_cols, target_col, normalize=True, device='cpu'):
         self.feature_cols = feature_cols
         self.target_col = target_col
-        self.device = torch.device(device if device else "cpu")
+        self.device = device 
 
         X = df[feature_cols].values.astype(float)
         y = df[target_col].values.astype(int)  # target berupa integer (kelas)
@@ -513,11 +513,11 @@ class MultiClass2DDataset(Dataset):
             print()
             break
     """
-    def __init__(self, df, feature1_cols, feature2_cols, target_col, normalize=True, device=None):
+    def __init__(self, df, feature1_cols, feature2_cols, target_col, normalize=True, device='cpu'):
         self.feature1_cols = feature1_cols
         self.feature2_cols = feature2_cols
         self.target_col = target_col
-        self.device = torch.device(device if device else "cpu")
+        self.device = device
 
         X1 = df[feature1_cols].values.astype(float)
         X2 = df[feature2_cols].values.astype(float)
@@ -597,13 +597,13 @@ class MultiClass3DDataset(Dataset):
             print()
             break
     """
-    def __init__(self, df, feature1_cols, feature2_cols, feature3_cols, target_col, normalize=True, device=None):
+    def __init__(self, df, feature1_cols, feature2_cols, feature3_cols, target_col, normalize=True, device='cpu'):
         self.feature1_cols = feature1_cols
         self.feature2_cols = feature2_cols
         self.feature3_cols = feature3_cols
         self.target_col = target_col
 
-        self.device = torch.device(device if device else "cpu")
+        self.device = device
 
         # Ambil data dari DataFrame
         X1 = df[feature1_cols].values.astype(float)
@@ -644,17 +644,18 @@ class MultiClass3DDataset(Dataset):
 # Dataset PyTorch untuk regresi berbasis time series (LSTM/GRU/Transformer).
 #========================================================================================================================
 class RegressionDatasetTimeSeries(Dataset):
-    def __init__(self, df, seq_length=10, slide=1, feature_cols=None, target_col=None):
+    def __init__(self, df, seq_length=10, slide=1, feature_cols=None, target_col=None, device='cpu'):
         """
         Dataset PyTorch untuk regresi berbasis time series (LSTM/GRU/Transformer).
-        
+
         Args:
             df (pd.DataFrame): Data dalam bentuk DataFrame.
             seq_length (int): Panjang sequence input (misal 10 berarti 10 langkah ke belakang).
             slide (int): Langkah geser antar sequence (default 1).
-            feature_cols (list): Kolom yang digunakan sebagai fitur input.
+            feature_cols (list[str]): Kolom yang digunakan sebagai fitur input.
             target_col (str): Kolom target yang akan diprediksi.
-        
+            device (str | torch.device): Device untuk menyimpan tensor ('cpu' atau 'cuda').
+
         Contoh:
             data = {
                 "Open": [10, 11, 12, 13, 14, 15, 16],
@@ -664,18 +665,19 @@ class RegressionDatasetTimeSeries(Dataset):
             }
             df = pd.DataFrame(data)
 
-            # Membuat dataset
-            dataset = RegressionDatasetTimeSeries(df, seq_length=3, feature_cols=["Open", "High", "Low"], target_col="Close")
+            dataset = RegressionDatasetTimeSeries(
+                df, seq_length=3, feature_cols=["Open", "High", "Low"], target_col="Close", device="cuda"
+            )
 
-            # Contoh output
             print("Total sample:", len(dataset))
             X, y = dataset[0]
-            print("X shape:", X.shape)   # (3, 3) -> 3 langkah x 3 fitur
-            print("y:", y)        
+            print("X shape:", X.shape)   # (3, 3)
+            print("y:", y)
         """
         self.seq_length = seq_length
         self.slide = slide
-        
+        self.device = device
+
         if feature_cols is None:
             feature_cols = [c for c in df.columns if c != target_col]
         self.feature_cols = feature_cols
@@ -684,17 +686,18 @@ class RegressionDatasetTimeSeries(Dataset):
         # Konversi ke numpy untuk efisiensi
         data = df[feature_cols].values
         targets = df[target_col].values
-        
+
         self.X, self.y = [], []
-        
+
         for i in range(0, len(df) - seq_length, slide):
             seq_x = data[i:i+seq_length]
             seq_y = targets[i+seq_length]  # target langkah berikutnya
             self.X.append(seq_x)
             self.y.append(seq_y)
 
-        self.X = torch.tensor(np.array(self.X), dtype=torch.float32)
-        self.y = torch.tensor(np.array(self.y), dtype=torch.float32)
+        # Konversi ke tensor dan simpan ke device
+        self.X = torch.tensor(np.array(self.X), dtype=torch.float32, device=self.device)
+        self.y = torch.tensor(np.array(self.y), dtype=torch.float32, device=self.device)
 
     def __len__(self):
         return len(self.X)
@@ -730,10 +733,10 @@ class Regression1DDataset(Dataset):
 
         dataset = Regression1DDataset(df, feature_cols, target_col, normalize=True)
     """
-    def __init__(self, df, feature_cols, target_col, normalize=True, device=None):
+    def __init__(self, df, feature_cols, target_col, normalize=True, device='cpu'):
         self.feature_cols = feature_cols
         self.target_col = target_col
-        self.device = torch.device(device if device else "cpu")
+        self.device = device 
 
         X = df[feature_cols].values.astype(float)
         y = df[target_col].values.astype(float).reshape(-1, 1)  # target float (bisa multi-output)
@@ -793,11 +796,11 @@ class Regression2DDataset(Dataset):
             print()
             break
     """
-    def __init__(self, df, feature1_cols, feature2_cols, target_col, normalize=True, device=None):
+    def __init__(self, df, feature1_cols, feature2_cols, target_col, normalize=True, device='cpu'):
         self.feature1_cols = feature1_cols
         self.feature2_cols = feature2_cols
         self.target_col = target_col
-        self.device = torch.device(device if device else "cpu")
+        self.device =  device 
 
         # Ambil fitur dan target
         X1 = df[feature1_cols].values.astype(float)
@@ -882,12 +885,12 @@ class Regression3DDataset(Dataset):
             print("y:", y.shape)
             break
     """
-    def __init__(self, df, feature1_cols, feature2_cols, feature3_cols, target_col, normalize=True, device=None):
+    def __init__(self, df, feature1_cols, feature2_cols, feature3_cols, target_col, normalize=True, device='cpu'):
         self.feature1_cols = feature1_cols
         self.feature2_cols = feature2_cols
         self.feature3_cols = feature3_cols
         self.target_col = target_col
-        self.device = torch.device(device if device else "cpu")
+        self.device = device 
 
         # Ambil data fitur dan target
         X1 = df[feature1_cols].values.astype(float)
