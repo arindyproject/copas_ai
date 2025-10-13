@@ -1,0 +1,28 @@
+# PyTorch (sesuaikan versi dengan CUDA jika perlu)
+torch>=2.1.0
+
+# Data manipulation
+pandas>=2.0.0
+numpy>=1.25.0
+
+# Scikit-learn untuk preprocessing & metrics
+scikit-learn>=1.3.0
+
+# Joblib untuk menyimpan/load scaler
+joblib>=1.3.2
+
+# IPython widgets
+ipywidgets>=8.1.0
+
+# Plotting
+plotly>=5.16.0
+plotly-express>=0.4.1
+
+# Rich untuk tampilan tabel & panel
+rich>=13.5.3
+
+# tqdm untuk progress bar
+tqdm>=4.66.1
+
+# jcopdl library (pastikan versi sesuai yang dipakai)
+jcopdl>=0.1.0
