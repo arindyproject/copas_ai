@@ -6,7 +6,7 @@ import looper as lp
 
 console = Console()
 
-def train_and_evaluate_multi_label_1d(model, train_dataset, test_dataset, train_loader, test_loader, criterion, optim, config, device, labels, callback):
+def train_and_evaluate_multi_label(model, train_dataset, test_dataset, train_loader, test_loader, criterion, optim, config, device, labels, callback, dimension='1d',show_detail=True):
     """
     Fungsi untuk melatih dan menguji model multi-label classification dengan tampilan tabel Rich yang rapi.
 
@@ -26,48 +26,72 @@ def train_and_evaluate_multi_label_1d(model, train_dataset, test_dataset, train_
     while True:
         epoch_counter += 1
         console.rule(f"[bold green]🚀 EPOCH {epoch_counter}")
-
-        # === Training ===
-        train_metrics = lp.loop_multi_label_classification_1D(
-            "train", train_dataset, train_loader, model, criterion, optim, device, config.threshold
-        )
-
-        # === Testing ===
-        with torch.no_grad():
-            test_metrics = lp.loop_multi_label_classification_1D(
-                "test", test_dataset, test_loader, model, criterion, optim, device, config.threshold
+        
+        if(dimension=='1d'):
+            # === Training ===
+            train_metrics = lp.loop_multi_label_classification_1D(
+                "train", train_dataset, train_loader, model, criterion, optim, device, config.threshold
             )
 
-        # === Tabel Utama (Epoch Summary) ===
-        table_summary = Table(title=f"📊 Summary", title_style="bold magenta")
-        table_summary.add_column("Metric", justify="left", style="cyan", no_wrap=True)
-        table_summary.add_column("Train", justify="right", style="green")
-        table_summary.add_column("Test", justify="right", style="yellow")
-
-        metrics_keys = ["loss", "hamming_loss", "subset_accuracy", "micro_f1", "macro_f1", "overall_accuracy"]
-
-        for key in metrics_keys:
-            table_summary.add_row(
-                key.replace("_", " ").title(),
-                f"{train_metrics[key]:.4f}",
-                f"{test_metrics[key]:.4f}"
+            # === Testing ===
+            with torch.no_grad():
+                test_metrics = lp.loop_multi_label_classification_1D(
+                    "test", test_dataset, test_loader, model, criterion, optim, device, config.threshold
+                )
+        elif(dimension=='2d'):
+            # === Training ===
+            train_metrics = lp.loop_multi_label_classification_2D(
+                "train", train_dataset, train_loader, model, criterion, optim, device, config.threshold
             )
 
-        # === Tabel Per-Label Accuracy ===
-        table_label = Table(title="🎯 Per-Label Accuracy", title_style="bold blue")
-        table_label.add_column("Label", justify="center", style="cyan", no_wrap=True)
-        table_label.add_column("Accuracy", justify="center", style="green")
+            # === Testing ===
+            with torch.no_grad():
+                test_metrics = lp.loop_multi_label_classification_2D(
+                    "test", test_dataset, test_loader, model, criterion, optim, device, config.threshold
+                )
+        elif(dimension=='3d'):
+            # === Training ===
+            train_metrics = lp.loop_multi_label_classification_3D(
+                "train", train_dataset, train_loader, model, criterion, optim, device, config.threshold
+            )
 
-        per_label_acc = test_metrics.get("per_label_accuracy", [])
-        if len(per_label_acc) == len(labels):
-            for label, acc in zip(labels, per_label_acc):
-                table_label.add_row(label, f"{acc:.4f}")
-        else:
-            for i, acc in enumerate(per_label_acc):
-                table_label.add_row(f"Label {i+1}", f"{acc:.4f}")
+            # === Testing ===
+            with torch.no_grad():
+                test_metrics = lp.loop_multi_label_classification_3D(
+                    "test", test_dataset, test_loader, model, criterion, optim, device, config.threshold
+                )
+        
+        if(show_detail):
+            # === Tabel Utama (Epoch Summary) ===
+            table_summary = Table(title=f"📊 Summary", title_style="bold magenta")
+            table_summary.add_column("Metric", justify="left", style="cyan", no_wrap=True)
+            table_summary.add_column("Train", justify="right", style="green")
+            table_summary.add_column("Test", justify="right", style="yellow")
 
-        # === Cetak berdampingan ===
-        console.print(Columns([table_summary, table_label]))
+            metrics_keys = ["loss", "hamming_loss", "subset_accuracy", "micro_f1", "macro_f1", "overall_accuracy"]
+
+            for key in metrics_keys:
+                table_summary.add_row(
+                    key.replace("_", " ").title(),
+                    f"{train_metrics[key]:.4f}",
+                    f"{test_metrics[key]:.4f}"
+                )
+
+            # === Tabel Per-Label Accuracy ===
+            table_label = Table(title="🎯 Per-Label Accuracy", title_style="bold blue")
+            table_label.add_column("Label", justify="center", style="cyan", no_wrap=True)
+            table_label.add_column("Accuracy", justify="center", style="green")
+
+            per_label_acc = test_metrics.get("per_label_accuracy", [])
+            if len(per_label_acc) == len(labels):
+                for label, acc in zip(labels, per_label_acc):
+                    table_label.add_row(label, f"{acc:.4f}")
+            else:
+                for i, acc in enumerate(per_label_acc):
+                    table_label.add_row(f"Label {i+1}", f"{acc:.4f}")
+
+            # === Cetak berdampingan ===
+            console.print(Columns([table_summary, table_label]))
 
         # === Logging & Callback ===
         train_cost, train_acc = train_metrics["loss"], train_metrics["overall_accuracy"]

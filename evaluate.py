@@ -9,7 +9,7 @@ from rich.columns import Columns
 
 console = Console()
 
-def evaluate_multi_label_1d(model, dataloader, target_cols, criterion, device, threshold=0.5):
+def evaluate_multi_label(model, dataloader, target_cols, criterion, device, threshold=0.5, dimension='1d'):
     """
     Evaluasi model multi-label classification.
 
@@ -31,19 +31,48 @@ def evaluate_multi_label_1d(model, dataloader, target_cols, criterion, device, t
     total_elements = 0
 
     with torch.no_grad():
-        for x, y in dataloader:
-            x, y = x.to(device), y.to(device)
-            outputs = model(x)
-            preds = (outputs > threshold).float()
-            
-            # Hitung loss dan akurasi elemen
-            loss = criterion(outputs, y)
-            total_loss += loss.item()
-            total_correct += (preds == y).sum().item()
-            total_elements += y.numel()
+        if(dimension=='1d'):
+            for x, y in dataloader:
+                x, y = x.to(device), y.to(device)
+                outputs = model(x)
+                preds = (outputs > threshold).float()
 
-            all_preds.append(preds.cpu())
-            all_targets.append(y.cpu())
+                # Hitung loss dan akurasi elemen
+                loss = criterion(outputs, y)
+                total_loss += loss.item()
+                total_correct += (preds == y).sum().item()
+                total_elements += y.numel()
+
+                all_preds.append(preds.cpu())
+                all_targets.append(y.cpu())
+        elif(dimension=='2d'):
+            for x1,x2, y in dataloader:
+                x1,x2, y = x1.to(device),x2.to(device), y.to(device)
+                outputs = model(x1,x2)
+                preds = (outputs > threshold).float()
+
+                # Hitung loss dan akurasi elemen
+                loss = criterion(outputs, y)
+                total_loss += loss.item()
+                total_correct += (preds == y).sum().item()
+                total_elements += y.numel()
+
+                all_preds.append(preds.cpu())
+                all_targets.append(y.cpu())
+        elif(dimension=='3d'):
+            for x1,x2, x3, y in dataloader:
+                x1,x2, x3, y = x1.to(device),x2.to(device),x3.to(device), y.to(device)
+                outputs = model(x1,x2,x3)
+                preds = (outputs > threshold).float()
+
+                # Hitung loss dan akurasi elemen
+                loss = criterion(outputs, y)
+                total_loss += loss.item()
+                total_correct += (preds == y).sum().item()
+                total_elements += y.numel()
+
+                all_preds.append(preds.cpu())
+                all_targets.append(y.cpu())
 
     preds = torch.cat(all_preds, dim=0).numpy()
     targets = torch.cat(all_targets, dim=0).numpy()

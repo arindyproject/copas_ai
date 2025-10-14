@@ -4,7 +4,7 @@ import ipywidgets as widgets
 from IPython.display import display, clear_output
 from data_set import MultiLabel1DDataset
 
-class MultiLabelPredictor1D:
+class MultiLabelPredictor:
     """
     Class untuk membuat form input dan melakukan prediksi multi-label dengan model PyTorch.
     
@@ -17,15 +17,20 @@ class MultiLabelPredictor1D:
         col_target (str): Nama kolom target (tidak ditampilkan di input form).
     """
     
-    def __init__(self, model, config, cols, label_mapping, scaler_folder, col_target):
+    def __init__(self, model, config, label_mapping, scaler_folder, dimension='1d'):
         self.model = model
         self.config = config
-        self.cols = cols
         self.label_mapping = label_mapping
         self.scaler_folder = scaler_folder
-        self.col_target = col_target
+        self.dimension  = dimension
         
-        self.numeric_cols = [c for c in cols if 'label_' not in c and c != col_target]
+        self.feature_cols = []
+        for key, value in vars(self.config).items():
+            if key.startswith("feature") and key.endswith("_cols"):
+                if isinstance(value, list):
+                    self.feature_cols.extend(value)
+        
+        self.numeric_cols = [c for c in self.feature_cols if 'label_' not in c]
         self.radios, self.inputs = [], []
         self._build_widgets()
         self._display_form()
@@ -34,7 +39,7 @@ class MultiLabelPredictor1D:
     def _build_widgets(self):
         ultra_compact = widgets.Layout(width='90%', margin='2px 0')
         
-        for c in self.cols:
+        for c in self.feature_cols:
             if 'label_' in c:
                 label_name = c.replace('label_', '')
                 options = self.label_mapping[label_name]
@@ -111,7 +116,7 @@ class MultiLabelPredictor1D:
                 data_dict[col] = val if val != '' else None
             
             df_input = pd.DataFrame([data_dict])
-            df_input = df_input[[c for c in self.cols if c != self.col_target]]
+            df_input = df_input[self.feature_cols]
             display(df_input)
             
             # Scaling numerik
@@ -123,19 +128,46 @@ class MultiLabelPredictor1D:
                     df_scaled[[col]] = scaler_col.transform(df_input[[col]])
                     print(f"✅ '{col}' scaled (min:{scaler_col.data_min_[0]} | max:{scaler_col.data_max_[0]})")
             
+            
             # Konversi ke tensor
-            X = torch.tensor(df_scaled.values, dtype=torch.float32)
+            
             print("\n⚙️ DATA SETELAH SCALING")
             print("─" * 30)
             display(df_scaled)
             
-            # Prediksi
-            with torch.no_grad():
-                output = self.model(X)
-                predictions = (output > self.config.threshold).float().cpu().numpy()
-                percentages = output.cpu().numpy() * 100
-                pred = (output > self.config.threshold).float()
-                o = self._cekMultiLabel(list(pred[0]), self.config.labels)
+            
+            if(self.dimension=='1d'):
+                X = torch.tensor(df_scaled.values, dtype=torch.float32)
+                # Prediksi
+                with torch.no_grad():
+                    output = self.model(X)
+                    predictions = (output > self.config.threshold).float().cpu().numpy()
+                    percentages = output.cpu().numpy() * 100
+                    pred = (output > self.config.threshold).float()
+                    o = self._cekMultiLabel(list(pred[0]), self.config.labels)
+                    
+            elif(self.dimension=='2d'):
+                X1 = torch.tensor(df_scaled[self.config.feature_1_cols].values, dtype=torch.float32)
+                X2 = torch.tensor(df_scaled[self.config.feature_2_cols].values, dtype=torch.float32)
+                # Prediksi
+                with torch.no_grad():
+                    output = self.model(X1,X2)
+                    predictions = (output > self.config.threshold).float().cpu().numpy()
+                    percentages = output.cpu().numpy() * 100
+                    pred = (output > self.config.threshold).float()
+                    o = self._cekMultiLabel(list(pred[0]), self.config.labels)
+                    
+            elif(self.dimension=='3d'):
+                X1 = torch.tensor(df_scaled[self.config.feature_1_cols].values, dtype=torch.float32)
+                X2 = torch.tensor(df_scaled[self.config.feature_2_cols].values, dtype=torch.float32)
+                X3 = torch.tensor(df_scaled[self.config.feature_3_cols].values, dtype=torch.float32)
+                # Prediksi
+                with torch.no_grad():
+                    output = self.model(X1,X2,X3)
+                    predictions = (output > self.config.threshold).float().cpu().numpy()
+                    percentages = output.cpu().numpy() * 100
+                    pred = (output > self.config.threshold).float()
+                    o = self._cekMultiLabel(list(pred[0]), self.config.labels)
             
             self._cekPersen(predictions, percentages, self.config.labels)
     
@@ -153,3 +185,5 @@ class MultiLabelPredictor1D:
         form_widgets = [w for _, w in self.radios] + [w for _, w in self.inputs] + [self.btn, self.out_w]
         minimal_form = widgets.VBox(form_widgets, layout=widgets.Layout(padding='8px'))
         display(minimal_form)
+
+
