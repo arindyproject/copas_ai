@@ -597,7 +597,9 @@ def loop_multi_class_classification_1D(mode,dataset,dataloader,model,criterion,o
 
     for features, target in tqdm(dataloader, desc=mode):
         features, target = features.to(device), target.to(device)
-
+        # Ubah target jadi 1D (dari [batch, 1] → [batch])
+        if target.ndim == 2:
+            target = target.squeeze(1)
         # --- Forward pass ---
         output = model(features)  # [batch_size, num_classes]
         loss = criterion(output, target)
