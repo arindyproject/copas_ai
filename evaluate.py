@@ -12,6 +12,8 @@ from rich.columns import Columns
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+import torch.nn.functional as F
+
 console = Console()
 
 def evaluate_multi_label(model, dataloader, target_cols, criterion, device, threshold=0.5, dimension='1d'):
@@ -141,25 +143,24 @@ def evaluate_multi_label(model, dataloader, target_cols, criterion, device, thre
 
 
 def evaluate_multi_class(model, dataloader, labels, criterion, device, dimension='1d', show_detail=True):
-    """
-    Evaluasi model multi-class classification dengan tampilan tabel & hasil prediksi.
+    import torch
+    import torch.nn.functional as F
+    import numpy as np
+    import pandas as pd
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
+    from rich.table import Table
+    from rich.columns import Columns
+    from rich.console import Console
 
-    Args:
-        model (nn.Module)
-        dataloader (DataLoader)
-        labels (dict | list): Mapping id→label atau list label.
-        criterion: Fungsi loss (mis. nn.CrossEntropyLoss)
-        device (torch.device)
-        dimension (str): '1d', '2d', atau '3d'
-        show_detail (bool): Jika True, tampilkan tabel dan confusion matrix.
+    console = Console()
 
-    Returns:
-        dict: hasil evaluasi dan DataFrame hasil prediksi
-    """
     model.eval()
     total_loss = 0.0
     total_batches = 0
     all_predictions, all_targets = [], []
+    all_probs = []
 
     with torch.no_grad():
         for batch in dataloader:
@@ -181,13 +182,16 @@ def evaluate_multi_class(model, dataloader, labels, criterion, device, dimension
             total_loss += loss.item()
             total_batches += 1
 
-            preds = torch.argmax(outputs, dim=1)
+            probs = F.softmax(outputs, dim=1)  # tensor
+            preds = torch.argmax(probs, dim=1)
 
             all_predictions.extend(preds.cpu().numpy())
             all_targets.extend(y.cpu().numpy())
+            all_probs.extend(probs.cpu().numpy())
 
     preds = np.array(all_predictions)
     targets = np.array(all_targets)
+    probs = np.array(all_probs)
 
     # === Hitung metrik ===
     avg_loss = total_loss / total_batches
@@ -208,7 +212,6 @@ def evaluate_multi_class(model, dataloader, labels, criterion, device, dimension
     table_summary = Table(title="📊 Evaluasi Model", title_style="bold magenta")
     table_summary.add_column("Metrik", style="cyan", justify="left")
     table_summary.add_column("Nilai", style="green", justify="right")
-
     table_summary.add_row("💥 Loss (avg)", f"{avg_loss:.4f}")
     table_summary.add_row("🔹 Accuracy", f"{accuracy:.4f}")
     table_summary.add_row("📈 Macro F1-score", f"{macro_f1:.4f}")
@@ -221,11 +224,10 @@ def evaluate_multi_class(model, dataloader, labels, criterion, device, dimension
     for label_name, acc in zip(label_names, per_class_acc):
         table_label.add_row(str(label_name), f"{acc:.4f}")
 
-    # === Print berdampingan ===
     if show_detail:
         console.print(Columns([table_summary, table_label]))
 
-        # === Confusion Matrix (matplotlib) ===
+        # === Confusion Matrix ===
         plt.figure(figsize=(7, 5))
         sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
                     xticklabels=label_names,
@@ -239,15 +241,17 @@ def evaluate_multi_class(model, dataloader, labels, criterion, device, dimension
     # === DataFrame hasil ===
     df_results = pd.DataFrame({
         "Target": [label_names[t] for t in targets],
-        "Prediksi": [label_names[p] for p in preds]
+        "Prediksi": [label_names[p] for p in preds],
+        "Prob (%)": (probs[np.arange(len(preds)), preds] * 100).round(2),  # Prob kelas prediksi
+        "Benar (%)": (probs[np.arange(len(targets)), targets] * 100).round(2),  # Prob kelas target sebenarnya
     })
     df_results["Benar"] = (df_results["Target"] == df_results["Prediksi"]).astype(int)
-    df_results["Benar (%)"] = df_results["Benar"] * 100
 
     return {
         "df": df_results,
         "preds": preds,
         "targets": targets,
+        "probs": probs,
         "loss": avg_loss,
         "accuracy": accuracy,
         "macro_f1": macro_f1,

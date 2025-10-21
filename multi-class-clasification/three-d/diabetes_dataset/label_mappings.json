@@ -1,0 +1,38 @@
+{
+  "gender": {
+    "Male": 0.5,
+    "Female": 0.0,
+    "Other": 1.0
+  },
+  "ethnicity": {
+    "Asian": 0.0,
+    "White": 1.0,
+    "Hispanic": 0.5,
+    "Black": 0.25,
+    "Other": 0.75
+  },
+  "education_level": {
+    "Highschool": 0.3333333333333333,
+    "Graduate": 0.0,
+    "Postgraduate": 1.0,
+    "No formal": 0.6666666666666666
+  },
+  "income_level": {
+    "Lower-Middle": 0.5,
+    "Middle": 0.75,
+    "Low": 0.25,
+    "Upper-Middle": 1.0,
+    "High": 0.0
+  },
+  "employment_status": {
+    "Employed": 0.0,
+    "Unemployed": 1.0,
+    "Retired": 0.3333333333333333,
+    "Student": 0.6666666666666666
+  },
+  "smoking_status": {
+    "Never": 1.0,
+    "Former": 0.5,
+    "Current": 0.0
+  }
+}
