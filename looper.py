@@ -1020,7 +1020,9 @@ def loop_regression_2D(mode,dataset,dataloader,model,criterion,optimizer,device)
         "mae": mae,
         "mse": mse,
         "rmse": rmse,
-        "r2": r2
+        "r2": r2,
+        "y_true": all_targets.flatten(),     # ✅ Tambahkan ini
+        "y_pred": all_predictions.flatten()  # ✅ Tambahkan ini
     }
 #========================================================================================================================
 
@@ -1095,6 +1097,8 @@ def loop_regression_3D(mode,dataset,dataloader,model,criterion,optimizer,device)
         "mae": mae,
         "mse": mse,
         "rmse": rmse,
-        "r2": r2
+        "r2": r2,
+        "y_true": all_targets.flatten(),     # ✅ Tambahkan ini
+        "y_pred": all_predictions.flatten()  # ✅ Tambahkan ini
     }
 #========================================================================================================================

@@ -258,3 +258,110 @@ def evaluate_multi_class(model, dataloader, labels, criterion, device, dimension
         "confusion_matrix": cm,
         "per_class_accuracy": dict(zip(label_names, per_class_acc.round(4)))
     }
+
+
+def evaluate_regression(model, dataloader, criterion, device, dimension='1d', show_detail=True):
+    import torch
+    import numpy as np
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+    from rich.table import Table
+    from rich.columns import Columns
+    from rich.console import Console
+
+    console = Console()
+    model.eval()
+
+    total_loss = 0.0
+    total_batches = 0
+    all_preds, all_targets = [], []
+
+    with torch.no_grad():
+        for batch in dataloader:
+            # === Input Dinamis ===
+            if dimension == '1d':
+                x, y = batch
+                outputs = model(x.to(device))
+            elif dimension == '2d':
+                x1, x2, y = batch
+                outputs = model(x1.to(device), x2.to(device))
+            elif dimension == '3d':
+                x1, x2, x3, y = batch
+                outputs = model(x1.to(device), x2.to(device), x3.to(device))
+            else:
+                raise ValueError("dimension harus '1d', '2d', atau '3d'")
+
+            y = y.to(device)
+            loss = criterion(outputs, y)
+            total_loss += loss.item()
+            total_batches += 1
+
+            all_preds.extend(outputs.cpu().numpy().flatten())
+            all_targets.extend(y.cpu().numpy().flatten())
+
+    preds = np.array(all_preds)
+    targets = np.array(all_targets)
+
+    # === Hitung metrik regresi ===
+    avg_loss = total_loss / total_batches
+    mae = mean_absolute_error(targets, preds)
+    mse = mean_squared_error(targets, preds)
+    rmse = np.sqrt(mse)
+    r2 = r2_score(targets, preds)
+
+    # === Tabel ringkasan ===
+    table_summary = Table(title="📊 Evaluasi Model Regresi", title_style="bold magenta")
+    table_summary.add_column("Metrik", style="cyan", justify="left")
+    table_summary.add_column("Nilai", style="green", justify="right")
+    table_summary.add_row("💥 Loss (avg)", f"{avg_loss:.4f}")
+    table_summary.add_row("📉 MAE", f"{mae:.4f}")
+    table_summary.add_row("📉 MSE", f"{mse:.4f}")
+    table_summary.add_row("📉 RMSE", f"{rmse:.4f}")
+    table_summary.add_row("📈 R² Score", f"{r2:.4f}")
+
+    if show_detail:
+        console.print(table_summary)
+
+        # === Scatter Plot (Pred vs Target) ===
+        plt.figure(figsize=(6, 6))
+        sns.scatterplot(x=targets, y=preds, s=30, alpha=0.7)
+        plt.plot([targets.min(), targets.max()],
+                 [targets.min(), targets.max()],
+                 'r--', lw=2, label="Ideal (y=x)")
+        plt.xlabel("Actual Values")
+        plt.ylabel("Predicted Values")
+        plt.title("Prediksi vs Aktual", fontsize=13, fontweight="bold")
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+        # === Distribusi Error ===
+        errors = preds - targets
+        plt.figure(figsize=(6, 4))
+        sns.histplot(errors, bins=30, kde=True, color='purple')
+        plt.xlabel("Error (Pred - Actual)")
+        plt.title("Distribusi Error", fontsize=13, fontweight="bold")
+        plt.tight_layout()
+        plt.show()
+
+    # === DataFrame hasil ===
+    df_results = pd.DataFrame({
+        "Target": targets.round(4),
+        "Prediksi": preds.round(4),
+        "Error": (preds - targets).round(4),
+        "Error (%)": ((preds - targets) / (targets + 1e-8) * 100).round(2)
+    })
+
+    return {
+        "df": df_results,
+        "preds": preds,
+        "targets": targets,
+        "loss": avg_loss,
+        "mae": mae,
+        "mse": mse,
+        "rmse": rmse,
+        "r2": r2,
+    }
+
