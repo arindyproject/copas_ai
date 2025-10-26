@@ -46,20 +46,21 @@ class MultiLabelTimeSeriesDataset(Dataset):
                 print("y:", y.shape)  # (batch, num_labels)
                 break
         """
-    def __init__(self, df, seq_length=10, slide=1, feature_cols=None, target_cols=None, device='cpu'):
+    def __init__(self, df, seq_length=10, slide=1, feature_cols=None, target_cols=None,normalize=False, device='cpu'):
         if feature_cols is None or target_cols is None:
             raise ValueError("feature_cols dan target_cols harus ditentukan sebagai list nama kolom.")
 
         self.seq_length = seq_length
         self.slide = slide
         self.device =device
+        self.normalize =normalize
 
         # Ambil data fitur dan target
         X = df[feature_cols].values.astype(float)
         y = df[target_cols].values.astype(float)
 
         # Normalisasi fitur ke [0, 1] jika diminta
-        if normalize:
+        if self.normalize:
             X_min = X.min(axis=0, keepdims=True)
             X_max = X.max(axis=0, keepdims=True)
             X = (X - X_min) / (X_max - X_min + 1e-8)

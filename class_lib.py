@@ -105,7 +105,7 @@ class GRU_MultiLabelClassifier(nn.Module):
 #Model RNN sederhana untuk multi-label classification.
 #========================================================================================================================
 class RNN_MultiLabelClassifier(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout=0.2, bidirectional=False):
+    def __init__(self, input_size, hidden_size, num_layers, num_classes, dropout=0.2, bidirectional=False, activation='relu'):
         """
         Model RNN sederhana untuk multi-label classification.
 
@@ -126,7 +126,7 @@ class RNN_MultiLabelClassifier(nn.Module):
             batch_first=True,
             dropout=dropout,
             bidirectional=bidirectional,
-            nonlinearity='tanh'  # bisa diganti 'relu' juga
+            nonlinearity=activation  # bisa diganti 'relu' juga tanh
         )
 
         rnn_output_size = hidden_size * (2 if bidirectional else 1)
