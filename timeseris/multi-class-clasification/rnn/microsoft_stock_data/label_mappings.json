@@ -1,0 +1,9 @@
+{
+  "Day": {
+    "Monday": 0.25,
+    "Tuesday": 0.75,
+    "Wednesday": 1.0,
+    "Thursday": 0.5,
+    "Friday": 0.0
+  }
+}

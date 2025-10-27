@@ -339,76 +339,80 @@ class MultiLabel3DDataset(Dataset):
 #========================================================================================================================
 class MultiClassTimeSeriesDataset(Dataset):
     """
-    Dataset PyTorch untuk multi-class classification berbasis time series / LSTM.
-    
+    Dataset PyTorch untuk multi-class classification berbasis LSTM/RNN/GRU time series.
+
     Args:
         df (pd.DataFrame): Data sumber.
-        feature_stems (list[str]): List nama dasar kolom fitur (misal ['open', 'high', 'low', 'close']).
-        target_stem (str): Nama dasar kolom target (misal 'label').
-        seq_length (int): Panjang sequence (misal 10).
-        slide (int): Pergeseran antar sequence (misal 1).
-        device (torch.device, optional): Tempat menyimpan tensor (default: CPU).
-    
+        seq_length (int): Panjang sequence input.
+        slide (int): Langkah geser antar sequence.
+        feature_cols (list[str]): Nama kolom yang digunakan sebagai fitur.
+        target_col (str): Nama kolom yang digunakan sebagai target.
+        normalize (bool): Jika True, fitur akan dinormalisasi ke [0, 1].
+        device (torch.device | str | None): Device untuk tensor ('cuda' atau 'cpu').
+
     Contoh:
         data = {
             "open": np.random.rand(100),
             "high": np.random.rand(100),
             "low": np.random.rand(100),
             "close": np.random.rand(100),
-            "label": np.random.randint(0, 3, size=100)  # 3 kelas
+            "label": np.random.randint(0, 3, size=100)
         }
         df = pd.DataFrame(data)
 
         dataset = MultiClassTimeSeriesDataset(
-            df,
-            feature_stems=["open", "high", "low", "close"],
-            target_stem="label",
+            df=df,
             seq_length=10,
-            slide=1
+            slide=1,
+            feature_cols=["open", "high", "low", "close"],
+            target_col="label"
         )
 
-        x, y = dataset[0]
-        print("X shape:", x.shape)  # (seq_length, num_features)
+        X, y = dataset[0]
+        print("X shape:", X.shape)  # (seq_length, num_features)
         print("Y:", y)
     """
-    def __init__(self, df, feature_stems, target_stem, seq_length=10, slide=1, device='cpu'):
-        super().__init__()
-        self.df = df.reset_index(drop=True)
-        self.feature_stems = feature_stems
-        self.target_stem = target_stem
+    def __init__(self, df, seq_length=10, slide=1,
+                 feature_cols=None, target_cols=None,
+                 normalize=False, device='cpu'):
+
+        if feature_cols is None or target_cols is None:
+            raise ValueError("feature_cols dan target_col harus ditentukan.")
+
         self.seq_length = seq_length
         self.slide = slide
-        self.device = device 
+        self.device = device
+        self.normalize = normalize
 
-        # Pastikan semua kolom fitur ada
-        for stem in self.feature_stems:
-            if stem not in df.columns:
-                raise ValueError(f"Kolom fitur '{stem}' tidak ditemukan di DataFrame.")
+        # Ambil data fitur dan target
+        X = df[feature_cols].values.astype(float)
+        y = df[target_cols].values.astype(int)
 
-        if target_stem not in df.columns:
-            raise ValueError(f"Kolom target '{target_stem}' tidak ditemukan di DataFrame.")
+        # Normalisasi fitur ke [0, 1] jika diminta
+        if self.normalize:
+            X_min = X.min(axis=0, keepdims=True)
+            X_max = X.max(axis=0, keepdims=True)
+            X = (X - X_min) / (X_max - X_min + 1e-8)
 
-        self.features = df[self.feature_stems].values
-        self.targets = df[self.target_stem].values
+        # Simpan sequence dan target
+        sequences = []
+        targets = []
 
-        # Total banyak sequence
-        self.indices = [
-            i for i in range(0, len(self.features) - seq_length, slide)
-        ]
+        for i in range(0, len(df) - seq_length, slide):
+            X_seq = X[i:i + seq_length]
+            y_next = y[i + seq_length]  # target setelah sequence
+            sequences.append(X_seq)
+            targets.append(y_next)
+
+        # Konversi ke tensor dan kirim ke device
+        self.sequences = torch.tensor(sequences, dtype=torch.float32, device=self.device)
+        self.targets = torch.tensor(targets, dtype=torch.long, device=self.device)
 
     def __len__(self):
-        return len(self.indices)
+        return len(self.sequences)
 
     def __getitem__(self, idx):
-        i = self.indices[idx]
-        x = self.features[i:i + self.seq_length]
-        y = self.targets[i + self.seq_length]  # Target setelah sequence
-        
-        # Tensor
-        x_tensor = torch.tensor(x, dtype=torch.float32, device=self.device)
-        y_tensor = torch.tensor(y, dtype=torch.long, device=self.device)  # class index
-
-        return x_tensor, y_tensor
+        return self.sequences[idx], self.targets[idx]
 #========================================================================================================================
 
 #Dataset PyTorch untuk multi-class classification berbasis data 1D (bukan time series).
