@@ -46,7 +46,7 @@ class MultiLabelTimeSeriesDataset(Dataset):
                 print("y:", y.shape)  # (batch, num_labels)
                 break
         """
-    def __init__(self, df, seq_length=10, slide=1, feature_cols=None, target_cols=None,normalize=False, device='cpu'):
+    def __init__(self, df, seq_length=10, slide=1, feature_cols=None, target_cols=None,normalize=False, device='cpu', include_target=False):
         if feature_cols is None or target_cols is None:
             raise ValueError("feature_cols dan target_cols harus ditentukan sebagai list nama kolom.")
 
@@ -56,7 +56,10 @@ class MultiLabelTimeSeriesDataset(Dataset):
         self.normalize =normalize
 
         # Ambil data fitur dan target
-        X = df[feature_cols].values.astype(float)
+        if(include_target):
+            X = df[feature_cols + target_cols].values.astype(float)
+        else:
+            X = df[feature_cols].values.astype(float)
         y = df[target_cols].values.astype(float)
 
         # Normalisasi fitur ke [0, 1] jika diminta
@@ -71,7 +74,7 @@ class MultiLabelTimeSeriesDataset(Dataset):
 
         for i in range(0, len(df) - seq_length, slide):
             X_seq = X[i:i + seq_length]
-            y_next = y[i + seq_length - 1]  # target dari akhir sequence
+            y_next = y[i + seq_length]  # target dari akhir sequence
             sequences.append(X_seq)
             targets.append(y_next)
 
@@ -374,7 +377,7 @@ class MultiClassTimeSeriesDataset(Dataset):
     """
     def __init__(self, df, seq_length=10, slide=1,
                  feature_cols=None, target_cols=None,
-                 normalize=False, device='cpu'):
+                 normalize=False, device='cpu', include_target=False):
 
         if feature_cols is None or target_cols is None:
             raise ValueError("feature_cols dan target_col harus ditentukan.")
@@ -385,7 +388,10 @@ class MultiClassTimeSeriesDataset(Dataset):
         self.normalize = normalize
 
         # Ambil data fitur dan target
-        X = df[feature_cols].values.astype(float)
+        if(include_target):
+            X = df[feature_cols + [target_cols]].values.astype(float)
+        else:
+            X = df[feature_cols].values.astype(float)
         y = df[target_cols].values.astype(int)
 
         # Normalisasi fitur ke [0, 1] jika diminta
