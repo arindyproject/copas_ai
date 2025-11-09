@@ -3,6 +3,12 @@ import matplotlib.pyplot as plt
 from transformers import BertTokenizer, AutoModel
 import torch
 import numpy as np
+from tqdm import tqdm
+tqdm.pandas()  
+from sklearn.model_selection import train_test_split
+from torch.utils.data import TensorDataset, DataLoader
+from sklearn.preprocessing import LabelEncoder, MultiLabelBinarizer
+import torch
 
 
 class NewsStock:
@@ -81,7 +87,6 @@ class NewsStock:
         #norm vector
         self.norm_vector = norm_vector
 
-    
     def parse_volume(self,val):
         if pd.isna(val):
             return None
@@ -108,6 +113,26 @@ class NewsStock:
         merged_data = self.marge_news_stock()
         print(merged_data.dtypes)
         print(merged_data.shape)
+
+    def encode_bertembedding(self, text):
+        encoded_inputs  = self.tokenizer(
+            text,
+            return_tensors="pt",
+            truncation=True,
+            padding="max_length",
+            max_length=64
+        ).to(self.device)
+        # Dapatkan embedding dari model
+        with torch.no_grad():
+            outputs = self.m_bert(**encoded_inputs)
+            vector = outputs.pooler_output  # [1, 768]
+        vec = vector.cpu().numpy().flatten()
+        # Normalisasi vektor jika diperlukan 0 -1
+        if self.norm_vector:
+            norm = np.linalg.norm(vec)
+            if norm != 0:
+                vec = vec / norm
+        return vec
     
     def get_unique_news_date(self):
         return self.news_data['date_only'].unique()
@@ -173,80 +198,215 @@ class NewsStock:
         plt.tight_layout()
         plt.show()
 
+    def marge_news_stock(self, mode="same_day"):
+        """
+        Menggabungkan data berita dan saham berdasarkan tanggal.
+        
+        Parameter:
+        - mode: 
+            "same_day"  → berita hari ini cocok dengan saham hari yang sama
+            "next_day"  → berita hari ini cocok dengan saham hari berikutnya (+1 hari)
+        """
 
-
-
-    def marge_news_stock(self):
-        # Pastikan tipe datetime
+        # Pastikan kolom tanggal dalam format datetime
         self.news_data['date_only'] = pd.to_datetime(self.news_data['date_only'], errors='coerce')
-        self.stock_data['Date']     = pd.to_datetime(self.stock_data['Date'], errors='coerce')
+        self.stock_data['Date'] = pd.to_datetime(self.stock_data['Date'], errors='coerce')
 
-        # Konversi ke string (format YYYY-MM-DD)
-        #self.news_data['date_str'] = self.news_data['date_only'].dt.strftime('%Y-%m-%d')
-        #self.stock_data['date_str'] = self.stock_data['Date'].dt.strftime('%Y-%m-%d')
+        # Buat kolom date_merge sesuai mode
+        if mode == "next_day":
+            self.news_data['date_merge'] = self.news_data['date_only'] + pd.Timedelta(days=1)
+        else:
+            self.news_data['date_merge'] = self.news_data['date_only']
 
-        # Filter berdasarkan cutoff_time jika ada
+        # Jika ada cutoff_time, geser berita setelah cutoff ke hari berikutnya
         if self.cutoff_time:
             cutoff_time_obj = pd.to_datetime(self.cutoff_time).time()
-            self.news_data = self.news_data[self.news_data['time_only'] <= cutoff_time_obj]
+            after_cutoff = self.news_data['time_only'] > cutoff_time_obj
+            self.news_data.loc[after_cutoff, 'date_merge'] = (
+                self.news_data.loc[after_cutoff, 'date_merge'] + pd.Timedelta(days=1)
+            )
 
-        # Lakukan merge antara berita dan data saham berdasarkan tanggal
+        # Merge berita dan saham berdasarkan date_merge
         merged_data = pd.merge(
             self.news_data,
             self.stock_data,
-            left_on='date_only',
+            left_on='date_merge',
             right_on='Date',
             how='left'
         )
 
-        # Hapus baris yang tidak memiliki status saham atau judul kosong
+        # Hapus baris tanpa Status atau judul kosong
         merged_data = merged_data.dropna(subset=['Status', 'judul'])
 
+        #print information
+        print("\n\n=====================Merge News and Stock=====================")
+        print("Total Stock data : ", self.stock_data.shape)
+        print("Total News data  : ", self.news_data.shape)
+        print("Total Merged data: ", merged_data.shape)
+        print(f"✅ Selesai merge berita dan saham (mode: {mode}) dengan {merged_data.shape[0]} baris hasil.")
         return merged_data
+
+    def marge_news_stock_add_vector(self, target_cols=['judul'], mode='same_day'):
+        """
+        Menambahkan kolom embedding (vector) untuk kolom teks seperti 'judul' atau 'konten'
+        setelah melakukan merge berita dan saham.
+
+        Parameter:
+        - target_cols : list kolom teks yang ingin diubah jadi embedding
+        - mode        : 'same_day' untuk merge di tanggal sama
+                        'next_day' untuk merge dengan saham hari berikutnya
+        """
+
+        # Ambil hasil merge sesuai mode
+        merged_data = self.marge_news_stock(mode=mode)
+
+        # Loop setiap kolom target dan buat embedding
+        for col in target_cols:
+            new_col = f"vec_{col}"  # nama kolom embedding baru
+            print(f"🔄 Membuat embedding untuk kolom: {col} → {new_col}")
+            merged_data[new_col] = merged_data[col].progress_apply(self.encode_bertembedding)
+
+        #print information
+        print("\n\n=====================Add Embedding Vector=====================")
+        print("Target Columns  : ", target_cols)
+        print(f"✅ Selesai membuat embedding untuk {len(target_cols)} kolom (mode: {mode})")
+
+        return merged_data
+
+    def create_torch_dataset(
+        self,
+        data,
+        feature_cols,
+        target_col,
+        task_type="multi_label",   # opsi: "regression", "multi_class", "multi_label"
+        test_size=0.2,
+        random_state=42,
+        batch_size=32,
+        shuffle=True
+    ):
+        """
+        Membuat dataset dan DataLoader untuk PyTorch dari DataFrame.
+        """
+        print("\n===================== Membuat Dataset Torch =====================")
+        print(f"🧩 Fitur       : {feature_cols}")
+        print(f"🎯 Target      : {target_col}")
+        print(f"📘 Task Type   : {task_type}")
+        print(f"📊 Test Size   : {test_size}")
+        print(f"⚙️ Batch Size  : {batch_size}")
+
+        # === Siapkan X ===
+        X_parts = []
+        for col in feature_cols:
+            if isinstance(data[col].iloc[0], np.ndarray):  # jika vektor
+                X_parts.append(np.stack(data[col].values))
+            else:
+                X_parts.append(data[col].values.reshape(-1, 1))
+        X = np.concatenate(X_parts, axis=1).astype(np.float32)
+
+        labels = None
+
+        # === Siapkan y ===
+        if task_type == "multi_label":
+            labels = sorted(data[target_col].dropna().unique())
+            print(f"🧾 Label unik ({target_col}) → {labels}")
+
+            for lbl in labels:
+                new_col = f"y_{target_col}_{lbl.upper()}"
+                data[new_col] = (data[target_col] == lbl).astype(int)
+
+            y_cols = [f"y_{target_col}_{lbl.upper()}" for lbl in labels]
+            y = data[y_cols].values.astype(np.float32)
+
+        elif task_type == "multi_class":
+            le = LabelEncoder()
+            data[f"y_{target_col}"] = le.fit_transform(data[target_col].astype(str))
+            labels = list(le.classes_)
+            print(f"🧾 Label unik ({target_col}) → {labels}")
+            y = data[f"y_{target_col}"].values.astype(np.int64).reshape(-1, 1)
+
+        elif task_type == "regression":
+            y = data[[target_col]].values.astype(np.float32)
+        else:
+            raise ValueError("task_type harus 'regression', 'multi_class', atau 'multi_label'")
+
+        # === Split data ===
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state, shuffle=shuffle
+        )
+
+        # === Convert ke tensor ===
+        X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+        X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
+
+        if task_type == "multi_class":
+            y_train_tensor = torch.tensor(y_train.squeeze(), dtype=torch.long)
+            y_test_tensor = torch.tensor(y_test.squeeze(), dtype=torch.long)
+        else:
+            y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
+            y_test_tensor = torch.tensor(y_test, dtype=torch.float32)
+
+        # === Dataset & DataLoader ===
+        train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+        test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
+
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+        # === Print Info ===
+        print(f"\n✅ Dataset berhasil dibuat:")
+        print(f"   🔹 Train size : {len(train_dataset)} sampel")
+        print(f"   🔹 Test size  : {len(test_dataset)} sampel")
+
+        # === Print contoh sampel ===
+        print("\n🧠 Contoh Sampel Train:")
+        for i in range(min(2, len(train_dataset))):
+            X_sample, y_sample = train_dataset[i]
+            print(f"  ▶️ X[{i}].shape: {tuple(X_sample.shape)} | y[{i}]: {y_sample.tolist()}")
+
+        print("\n🧪 Contoh Sampel Test:")
+        for i in range(min(2, len(test_dataset))):
+            X_sample, y_sample = test_dataset[i]
+            print(f"  ▶️ X[{i}].shape: {tuple(X_sample.shape)} | y[{i}]: {y_sample.tolist()}")
+
+        print(f"\n🎯 Labels: {labels}")
+
+        return train_loader, test_loader, X_train, X_test, y_train, y_test, labels
     
-    def encode_bertembedding(self, text):
-        encoded_inputs  = self.tokenizer(
-            text,
-            return_tensors="pt",
-            truncation=True,
-            padding="max_length",
-            max_length=64
-        ).to(self.device)
-        # Dapatkan embedding dari model
-        with torch.no_grad():
-            outputs = self.m_bert(**encoded_inputs)
-            vector = outputs.pooler_output  # [1, 768]
-        vec = vector.cpu().numpy().flatten()
-        # Normalisasi vektor jika diperlukan 0 -1
-        if self.norm_vector:
-            norm = np.linalg.norm(vec)
-            if norm != 0:
-                vec = vec / norm
-        return vec
+   
 
 file_news   = 'data_news/news.csv'
 file_stock  = 'data_news/ihsg.csv'
 start_date  = '2009-01-01'
 cutoff_time = '15:00:00'
-news_stock = NewsStock(file_news, file_stock, start_date=start_date, cutoff_time=None)
-print(news_stock.check_types())
+news_stock = NewsStock(file_news, file_stock, start_date=start_date, cutoff_time=cutoff_time, bert=True)
+#print(news_stock.check_types())
 #print(news_stock.show_news())
 #print(news_stock.show_stock())
-print(news_stock.marge_news_stock()[['Date','date_only', 'judul', 'Status']])
+#print(news_stock.marge_news_stock_add_vector())#[['Date', 'date_merge','date_only', 'embedding', 'judul', 'Status']])
 #news_stock.show_stock_status_chart_dounut()
 #news_stock.show_chart_news_nama_sumber_bar()
 #print(news_stock.encode_bertembedding(["Pasar saham menguat hari ini","Ekonomi Indonesia tumbuh pesat"])[:10])
 
 # Ambil tanggal unik dari berita dan saham
-news_dates = set(news_stock.get_unique_news_date())
-stock_dates = set(news_stock.get_unique_stock_date())
+#news_dates = set(news_stock.get_unique_news_date())
+#stock_dates = set(news_stock.get_unique_stock_date())
 
 # Cari irisan (tanggal yang sama)
-same_dates = news_dates.intersection(stock_dates)
+#same_dates = news_dates.intersection(stock_dates)
 
 # Tampilkan hasil
-print("Jumlah tanggal unik di berita :", len(news_dates))
-print("Jumlah tanggal unik di saham   :", len(stock_dates))
-print("Jumlah tanggal yang sama       :", len(same_dates))
-print("\nTanggal yang sama:")
+#print("Jumlah tanggal unik di berita :", len(news_dates))
+#print("Jumlah tanggal unik di saham   :", len(stock_dates))
+#print("Jumlah tanggal yang sama       :", len(same_dates))
+#print("\nTanggal yang sama:")
 #print(sorted(same_dates))
+
+merged_vec = news_stock.marge_news_stock_add_vector(target_cols=['judul'])
+train_loader, test_loader, X_train, X_test, y_train, y_test, labels = news_stock.create_torch_dataset(
+    data=merged_vec,
+    feature_cols=['vec_judul'],
+    target_col='Status',
+    task_type='multi_label',
+    test_size=0.2,
+    batch_size=16
+)
