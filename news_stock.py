@@ -9,83 +9,136 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import LabelEncoder, MultiLabelBinarizer
 import torch
+from sqlalchemy import create_engine
 
 
 class NewsStock:
-    def __init__(self, file_news, file_stock, start_date=None, end_date=None, cutoff_time=None,norm_vector=False,bert=False, pretrained_model = "indobenchmark/indobert-lite-base-p2"):
-        #news data
-        #--------------------------------------------------------------------------
-        self.file_news = file_news
-        self.news_data = pd.read_csv(self.file_news)
-        self.news_data['tgl'] = pd.to_datetime(self.news_data['tgl'])
+    def __init__(
+        self,
+        file_news=None,
+        file_stock=None,
+        start_date=None,
+        end_date=None,
+        cutoff_time=None,
+        norm_vector=False,
+        bert=False,
+        pretrained_model="indobenchmark/indobert-lite-base-p2",
+        mode_news="csv",  # ✅ mode: 'csv' atau 'mysql'
+        mode_stock="csv",  # ✅ mode: 'csv' atau 'mysql'
+        table_news="news_data",  # nama tabel berita di MySQL
+        table_stock="stock_data",  # nama tabel saham di MySQL
+        config_path="config.txt"
+    ):
+        self.mode_news = mode_news
+        self.mode_stock = mode_stock
+        self.cutoff_time = cutoff_time
+        self.norm_vector = norm_vector
+
+        # ----------------------------------------------------------
+        # 🔧 Load config.txt (untuk mode MySQL)
+        # ----------------------------------------------------------
+        config = {}
+        with open(config_path, "r") as f:
+            for line in f:
+                if "=" in line:
+                    key, value = line.strip().split("=", 1)
+                    config[key.strip()] = value.strip().strip('"')
+
+        db_user = config.get("db_user", "root")
+        db_pass = config.get("db_pass", "")
+        db_host = config.get("db_host", "localhost")
+        db_name = config.get("db_name", "news_db")
+
+        self.engine = create_engine(f"mysql+pymysql://{db_user}:{db_pass}@{db_host}/{db_name}")
+
+        # ----------------------------------------------------------
+        # 📰 NEWS DATA
+        # ----------------------------------------------------------
+        if mode_news == "csv":
+            self.file_news = file_news
+            self.news_data = pd.read_csv(self.file_news)
+        elif mode_news == "mysql":
+            print(f"🔗 Memuat data berita dari MySQL tabel '{table_news}'...")
+            self.news_data = pd.read_sql(f"SELECT * FROM {table_news}", self.engine)
+        else:
+            raise ValueError("mode_news harus 'csv' atau 'mysql'")
+
+        self.news_data['tgl'] = pd.to_datetime(self.news_data['tgl'], errors='coerce')
         self.news_data = self.news_data.sort_values(by='tgl', ascending=True)
-        #start and end date
+
+        # filter berdasarkan tanggal
         if start_date:
             self.news_data = self.news_data[self.news_data['tgl'] >= pd.to_datetime(start_date)]
         if end_date:
             self.news_data = self.news_data[self.news_data['tgl'] <= pd.to_datetime(end_date)]
-        #date only
-        self.news_data['date_only'] = self.news_data['tgl'].dt.date
-        #time only
-        self.news_data['time_only'] = self.news_data['tgl'].dt.time
-        #buang duplicate
-        self.news_data = self.news_data.drop_duplicates(subset=['judul', 'nama_sumber', 'date_only'], keep='first')
-        #--------------------------------------------------------------------------
 
-        #stock data
-        #--------------------------------------------------------------------------
-        self.file_stock = file_stock
-        self.stock_data = pd.read_csv(self.file_stock)
+        # tanggal dan waktu terpisah
+        self.news_data['date_only'] = self.news_data['tgl'].dt.date
+        self.news_data['time_only'] = self.news_data['tgl'].dt.time
+
+        # hapus duplikat
+        self.news_data = self.news_data.drop_duplicates(subset=['judul', 'nama_sumber', 'date_only'], keep='first')
+
+        # ----------------------------------------------------------
+        # 📈 STOCK DATA
+        # ----------------------------------------------------------
+        if mode_stock == "csv":
+            self.file_stock = file_stock
+            self.stock_data = pd.read_csv(self.file_stock)
+        elif mode_stock == "mysql":
+            print(f"🔗 Memuat data saham dari MySQL tabel '{table_stock}'...")
+            self.stock_data = pd.read_sql(f"SELECT * FROM {table_stock}", self.engine)
+
+        # pastikan format tanggal
         self.stock_data['Date'] = pd.to_datetime(self.stock_data['Date'], format='mixed', dayfirst=True)
-        self.stock_data = self.stock_data.sort_values(by='Date', ascending=True)    
-        # Bersihkan dan ubah kolom Change
+        self.stock_data = self.stock_data.sort_values(by='Date', ascending=True)
+
+        # ubah kolom numerik
         self.stock_data["Change"] = (
-            self.stock_data["Change"]
-            .astype(str)                        # pastikan string
-            .str.replace("%", "", regex=False)  # hilangkan tanda persen
-            .str.replace(",", ".", regex=False) # ubah koma jadi titik
-            .astype(float)                      # ubah ke float
+            self.stock_data["Change"].astype(str)
+            .str.replace("%", "", regex=False)
+            .str.replace(",", ".", regex=False)
+            .astype(float)
         )
-        # Ubah kolom Volume
+
+        # parse volume
         self.stock_data['Volume'] = self.stock_data['Volume'].apply(self.parse_volume)
-        # Ubah kolom numerik lainnya
+
+        # ubah kolom harga
         numeric_cols = ['Close', 'Open', 'High', 'Low']
         for col in numeric_cols:
             self.stock_data[col] = (
-                self.stock_data[col]
-                .astype(str)
-                .str.replace('.', '', regex=False)  # hapus pemisah ribuan
-                .str.replace(',', '.', regex=False)  # ubah koma menjadi titik desimal
+                self.stock_data[col].astype(str)
+                .str.replace('.', '', regex=False)
+                .str.replace(',', '.', regex=False)
                 .astype(float)
             )
-        #start and end date
+
+        # filter tanggal
         if start_date:
             self.stock_data = self.stock_data[self.stock_data['Date'] >= pd.to_datetime(start_date)]
         if end_date:
             self.stock_data = self.stock_data[self.stock_data['Date'] <= pd.to_datetime(end_date)]
-        #add status column
+
+        # status naik/turun
         self.stock_data['Status'] = self.stock_data['Change'].apply(lambda x: 'GOOD' if x > 0 else ('BAD' if x < 0 else 'NEUTRAL'))
-        # buang duplicate
+
+        # hapus duplikat
         self.stock_data = self.stock_data.drop_duplicates(subset=['Date'], keep='first')
-        #--------------------------------------------------------------------------
 
-        #cutoff time
-        self.cutoff_time = cutoff_time
-
-        #device
+        # ----------------------------------------------------------
+        # ⚙️ Device dan BERT
+        # ----------------------------------------------------------
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-        #load bert model
         self.tokenizer = None
-        self.m_bert    = None
+        self.m_bert = None
         if bert:
+            print("🔍 Memuat model BERT...")
             self.tokenizer = BertTokenizer.from_pretrained(pretrained_model)
-            self.m_bert    = AutoModel.from_pretrained(pretrained_model)
+            self.m_bert = AutoModel.from_pretrained(pretrained_model)
             self.m_bert.to(self.device)
             self.m_bert.eval()
-
-        #norm vector
-        self.norm_vector = norm_vector
 
     def parse_volume(self,val):
         if pd.isna(val):
@@ -378,7 +431,7 @@ file_news   = 'data_news/news.csv'
 file_stock  = 'data_news/ihsg.csv'
 start_date  = '2009-01-01'
 cutoff_time = '15:00:00'
-news_stock = NewsStock(file_news, file_stock, start_date=start_date, cutoff_time=cutoff_time, bert=True)
+news_stock = NewsStock(file_news, file_stock, start_date=start_date, cutoff_time=cutoff_time, bert=True, mode_news="mysql", table_news='google_news')
 #print(news_stock.check_types())
 #print(news_stock.show_news())
 #print(news_stock.show_stock())
