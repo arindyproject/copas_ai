@@ -10,7 +10,10 @@ from torch.utils.data import TensorDataset, DataLoader
 from sklearn.preprocessing import LabelEncoder, MultiLabelBinarizer
 import torch
 from sqlalchemy import create_engine
-
+from urllib.parse import quote_plus
+import os
+import ast
+import re
 
 class NewsStock:
     def __init__(
@@ -48,8 +51,10 @@ class NewsStock:
         db_pass = config.get("db_pass", "")
         db_host = config.get("db_host", "localhost")
         db_name = config.get("db_name", "news_db")
+        port = 3306                # opsional jika bukan default
 
-        self.engine = create_engine(f"mysql+pymysql://{db_user}:{db_pass}@{db_host}/{db_name}")
+        encoded_pass = quote_plus(db_pass)
+        self.engine = create_engine(f"mysql+pymysql://{db_user}:{encoded_pass}@{db_host}:{port}/{db_name}")
 
         # ----------------------------------------------------------
         # 📰 NEWS DATA
@@ -299,7 +304,7 @@ class NewsStock:
         print(f"✅ Selesai merge berita dan saham (mode: {mode}) dengan {merged_data.shape[0]} baris hasil.")
         return merged_data
 
-    def marge_news_stock_add_vector(self, target_cols=['judul'], mode='same_day'):
+    def marge_news_stock_add_vector(self, target_cols=['judul'], mode='same_day', save=False, path=""):
         """
         Menambahkan kolom embedding (vector) untuk kolom teks seperti 'judul' atau 'konten'
         setelah melakukan merge berita dan saham.
@@ -324,7 +329,82 @@ class NewsStock:
         print("Target Columns  : ", target_cols)
         print(f"✅ Selesai membuat embedding untuk {len(target_cols)} kolom (mode: {mode})")
 
+        # Simpan jika diminta
+        if save:
+            filename = f"{path}/merged_with_vector_{mode}.csv"
+
+            # Buat salinan agar tidak ubah data asli
+            df_to_save = merged_data.copy()
+
+            # Temukan kolom yang dimulai dengan "vec_"
+            vec_cols = [col for col in df_to_save.columns if col.startswith("vec_")]
+
+            # Konversi setiap kolom vektor menjadi string "1 2 3 4"
+            for col in vec_cols:
+                def vec_to_str(v):
+                    if isinstance(v, (list, np.ndarray)):
+                        # ubah jadi string tanpa koma dan kurung
+                        return " ".join(map(str, np.array(v).flatten().tolist()))
+                    elif isinstance(v, str):
+                        return v.strip("[]").replace(",", " ")
+                    else:
+                        return ""
+                df_to_save[col] = df_to_save[col].apply(vec_to_str)
+
+            # Simpan ke CSV
+            df_to_save.to_csv(filename, index=False)
+            print(f"💾 Data telah disimpan ke file: {filename}")
+            print(f"📊 Kolom vektor yang dikonversi: {vec_cols}")
+
         return merged_data
+    
+
+ 
+    def load_merged_vector_data(self, mode='same_day', path='data/vector_cache'):
+        """
+        Memuat kembali data hasil 'marge_news_stock_add_vector' dari file CSV
+        dan mengonversi kolom dengan prefix 'vec_' kembali menjadi np.array.
+        Mendukung format seperti '1.1 4.2 -5.3' tanpa tanda koma.
+        """
+
+        os.makedirs(path, exist_ok=True)
+        filename = os.path.join(path, f"merged_with_vector_{mode}.csv")
+
+        if not os.path.exists(filename):
+            print(f"⚠️ File '{filename}' tidak ditemukan.")
+            return None
+
+        print(f"📂 Memuat data dari: {filename}")
+        df = pd.read_csv(filename)
+
+        vec_cols = [col for col in df.columns if col.startswith("vec_")]
+
+        def safe_parse_vec(x):
+            if not isinstance(x, str):
+                return np.array(x, dtype=np.float32)
+
+            s = x.strip()
+            # Format seperti "[1.2 3.4 -5.6]" atau "1.2 3.4 -5.6"
+            s = s.strip("[]")  # hilangkan tanda kurung
+            if not s:
+                return np.array([], dtype=np.float32)
+            try:
+                # Pisahkan berdasarkan spasi
+                parts = re.split(r"\s+", s)
+                nums = [float(p) for p in parts if p.strip() != ""]
+                return np.array(nums, dtype=np.float32)
+            except Exception:
+                # Jika gagal parsing, kembalikan None
+                return np.array([], dtype=np.float32)
+
+        for col in vec_cols:
+            print(f"🔄 Konversi kolom {col} → np.array ...")
+            df[col] = df[col].apply(safe_parse_vec)
+
+        print(f"✅ Data berhasil dimuat ({len(df)} baris, {len(df.columns)} kolom)")
+        print(f"📊 Kolom vector: {vec_cols}")
+        return df
+
 
     def create_torch_dataset(
         self,
@@ -431,7 +511,15 @@ file_news   = 'data_news/news.csv'
 file_stock  = 'data_news/ihsg.csv'
 start_date  = '2009-01-01'
 cutoff_time = '15:00:00'
-news_stock = NewsStock(file_news, file_stock, start_date=start_date, cutoff_time=cutoff_time, bert=True, mode_news="mysql", table_news='google_news')
+news_stock = NewsStock(
+    file_news, 
+    file_stock, 
+    start_date=start_date, 
+    cutoff_time=cutoff_time, 
+    bert=True, 
+    mode_news="csv", 
+    table_news='google_news'
+)
 #print(news_stock.check_types())
 #print(news_stock.show_news())
 #print(news_stock.show_stock())
@@ -454,7 +542,9 @@ news_stock = NewsStock(file_news, file_stock, start_date=start_date, cutoff_time
 #print("\nTanggal yang sama:")
 #print(sorted(same_dates))
 
-merged_vec = news_stock.marge_news_stock_add_vector(target_cols=['judul'])
+
+#merged_vec = news_stock.marge_news_stock_add_vector(target_cols=['judul'], save=True, path="data_news")
+merged_vec = news_stock.load_merged_vector_data(mode='same_day', path="data_news")
 train_loader, test_loader, X_train, X_test, y_train, y_test, labels = news_stock.create_torch_dataset(
     data=merged_vec,
     feature_cols=['vec_judul'],
@@ -463,3 +553,4 @@ train_loader, test_loader, X_train, X_test, y_train, y_test, labels = news_stock
     test_size=0.2,
     batch_size=16
 )
+
