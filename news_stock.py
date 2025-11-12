@@ -126,7 +126,7 @@ class NewsStock:
             self.stock_data = self.stock_data[self.stock_data['Date'] <= pd.to_datetime(end_date)]
 
         # status naik/turun
-        self.stock_data['Status'] = self.stock_data['Change'].apply(lambda x: 'GOOD' if x > 0 else ('BAD' if x < 0 else 'NEUTRAL'))
+        self.stock_data['Status'] = self.stock_data['Change'].apply(lambda x: 'GOOD' if x > 0 else 'BAD' )
 
         # hapus duplikat
         self.stock_data = self.stock_data.drop_duplicates(subset=['Date'], keep='first')
@@ -510,14 +510,14 @@ class NewsStock:
 file_news   = 'data_news/news.csv'
 file_stock  = 'data_news/ihsg.csv'
 start_date  = '2009-01-01'
-cutoff_time = '15:00:00'
+cutoff_time = '12:00:00'
 news_stock = NewsStock(
     file_news, 
     file_stock, 
     start_date=start_date, 
     cutoff_time=cutoff_time, 
     bert=True, 
-    mode_news="csv", 
+    mode_news="mysql", 
     table_news='google_news'
 )
 #print(news_stock.check_types())
@@ -543,8 +543,8 @@ news_stock = NewsStock(
 #print(sorted(same_dates))
 
 
-#merged_vec = news_stock.marge_news_stock_add_vector(target_cols=['judul'], save=True, path="data_news")
-merged_vec = news_stock.load_merged_vector_data(mode='same_day', path="data_news")
+merged_vec = news_stock.marge_news_stock_add_vector(target_cols=['judul'], save=True, path="data_news")
+#merged_vec = news_stock.load_merged_vector_data(mode='same_day', path="data_news")
 train_loader, test_loader, X_train, X_test, y_train, y_test, labels = news_stock.create_torch_dataset(
     data=merged_vec,
     feature_cols=['vec_judul'],
